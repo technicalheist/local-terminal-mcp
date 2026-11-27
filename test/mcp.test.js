@@ -51,7 +51,7 @@ test('MCP server exposes the terminal tools and runs commands end to end', async
     const executed = parse(
       await client.callTool({
         name: 'terminal_exec',
-        arguments: { id, command: 'printf "mcp-ok\\n"' },
+        arguments: { id, command: `"${process.execPath}" -e "console.log('mcp-ok')"` },
       }),
     );
     assert.match(executed.output, /mcp-ok/);
@@ -63,7 +63,7 @@ test('MCP server exposes the terminal tools and runs commands end to end', async
     const oneOff = parse(
       await client.callTool({
         name: 'terminal_run',
-        arguments: { command: 'printf done' },
+        arguments: { command: `"${process.execPath}" -e "process.stdout.write('done')"` },
       }),
     );
     assert.equal(oneOff.stdout, 'done');
