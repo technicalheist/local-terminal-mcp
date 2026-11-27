@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 const isWindows = process.platform === 'win32';
+const CMD_PROMPT = '__LTM_PROMPT__';
 
 const ANSI_PATTERN = new RegExp(
   [
@@ -101,7 +102,7 @@ class TerminalSession {
 
     const env = { ...process.env, ...(manager.env || {}), ...(options.env || {}) };
     if (this.shellFamily === 'cmd') {
-      env.PROMPT = '';
+      env.PROMPT = CMD_PROMPT;
     }
     const child = spawn(this.shell, shellArgs(this.shell), {
       cwd: this.cwd,
@@ -217,6 +218,9 @@ class TerminalSession {
     }
     if (clean && !raw) {
       output = stripAnsi(output);
+    }
+    if (this.shellFamily === 'cmd') {
+      output = output.split(CMD_PROMPT).join('');
     }
 
     if (!since && lines && lines > 0) {
