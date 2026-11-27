@@ -11,7 +11,7 @@ const INSTRUCTIONS = `Local Terminal MCP gives you persistent shell sessions on 
 
 Typical workflow:
 1. terminal_spawn - open a session (optional name, shell, cwd). Reuse it for related commands.
-2. terminal_exec - run a command inside a session and get the output. Shell state (cwd, env vars) persists between calls.
+2. terminal_exec - run a command inside a session and get the output plus its exit code. Shell state (cwd, env vars) persists between calls.
 3. terminal_read - fetch more output later, optionally only new output via the "since" cursor.
 4. terminal_write - type raw input into a session, for REPLs and interactive prompts.
 5. terminal_run - run a single command in a throwaway shell and get stdout, stderr and the exit code.
@@ -20,7 +20,8 @@ Typical workflow:
 Notes:
 - Sessions are real local shells. They can read, write and delete files and run any program the server user can run.
 - Do not run two commands in the same session at the same time. Output interleaves; use separate sessions instead.
-- terminal_exec returns when output goes quiet; long-running commands may still be running. Poll with terminal_read using the returned nextSince value.
+- terminal_exec waits for the command to finish and returns "completed" plus the command exit code. If completed is false, it is still running or waiting for input; poll with terminal_read using the returned nextSince value.
+- For interactive programs or commands that read stdin, use terminal_write, or terminal_exec with waitForCompletion: false.
 - Prefer terminal_run for short one-off commands and terminal_spawn + terminal_exec for anything stateful.
 - Close sessions you no longer need.`;
 
@@ -262,10 +263,16 @@ export function createTerminalServer(options = {}) {
     {
       title: 'Run a command in a session',
       description:
-        'Type a command into an existing session and return the output produced. The session keeps its working directory and environment, so use this for multi-step work. Long-running commands may still be running when this returns; poll with terminal_read.',
+        'Type a command into an existing session, wait for it to finish and return its output and exit code. The session keeps its working directory and environment, so use this for multi-step work. Set waitForCompletion to false for interactive programs or long-running servers.',
       inputSchema: {
         id: sessionRef,
         command: z.string().min(1).describe('Command line to execute in the session shell.'),
+        waitForCompletion: z
+          .boolean()
+          .optional()
+          .describe(
+            'Wait for the command to finish and report its exit code. Default true. Set false for REPLs, prompts or servers that keep running.',
+          ),
         idleMs,
         timeoutMs,
         raw: z.boolean().optional().describe('Return raw output with ANSI escapes. Default false.'),
@@ -277,33 +284,29 @@ export function createTerminalServer(options = {}) {
         openWorldHint: true,
       },
     },
-    safe(async ({ id, command, idleMs: quiet, timeoutMs: limit, raw }) => {
+    safe(async ({ id, command, idleMs: quiet, timeoutMs: limit, raw, waitForCompletion }) => {
       manager.ensureWritable();
       const session = manager.resolve(id);
-      const cursor = session.nextSeq;
-      await session.write(command, { newline: true });
-
-      const waitResult = await session.waitForIdle({
+      const result = await session.execCommand(command, {
         idleMs: quiet ?? 400,
         timeoutMs: limit ?? 15000,
+        raw,
+        waitForCompletion,
       });
 
-      const read = session.read({ since: cursor, raw });
       return {
         id: session.id,
         name: session.name,
-        status: session.status,
-        exitCode: session.exitCode,
-        initialCwd: session.cwd,
-        output: read.output,
-        nextSince: read.nextSince,
-        settled: waitResult.settled,
-        waitReason: waitResult.reason,
-        waitedMs: waitResult.waitedMs,
-        hint:
-          waitResult.reason === 'no-output'
-            ? 'No output yet. The command may still be running; call terminal_read with this nextSince value to poll.'
-            : undefined,
+        status: result.sessionStatus,
+        output: result.output,
+        nextSince: result.nextSince,
+        completed: result.completed,
+        exitCode: result.exitCode,
+        sessionExitCode: result.sessionExitCode,
+        waitedMs: result.waitedMs,
+        hint: result.completed
+          ? undefined
+          : 'The command is still running or waiting for input. Poll with terminal_read using this nextSince value.',
       };
     }),
   );

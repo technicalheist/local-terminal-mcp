@@ -73,6 +73,62 @@ test('captures stderr from the session', async (t) => {
   assert.match(session.read({}).output, /problem/);
 });
 
+test('execCommand reports the command exit code and completion', async (t) => {
+  const manager = useManager(t);
+  const session = await manager.spawn({});
+
+  const ok = await session.execCommand(nodeEval("console.log('ok')"), { timeoutMs: 8000 });
+  assert.equal(ok.completed, true);
+  assert.equal(ok.exitCode, 0);
+  assert.match(ok.output, /ok/);
+  assert.doesNotMatch(ok.output, /__LTM_DONE_/);
+  assert.ok(ok.nextSince >= 1);
+
+  const bad = await session.execCommand(nodeEval('process.exit(7)'), { timeoutMs: 8000 });
+  assert.equal(bad.completed, true);
+  assert.equal(bad.exitCode, 7);
+  assert.equal(bad.output.trim(), '');
+
+  const silent = await session.execCommand(nodeEval('process.exit(0)'), { timeoutMs: 8000 });
+  assert.equal(silent.completed, true);
+  assert.equal(silent.exitCode, 0);
+  assert.equal(silent.output, '');
+});
+
+test('execCommand waits for slow commands instead of returning empty output', async (t) => {
+  const manager = useManager(t);
+  const session = await manager.spawn({});
+  const result = await session.execCommand(
+    nodeEval("setTimeout(() => { console.log('late-done'); }, 1200)"),
+    { timeoutMs: 10000 },
+  );
+  assert.equal(result.completed, true);
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /late-done/);
+});
+
+test('execCommand can opt out of completion markers', async (t) => {
+  const manager = useManager(t);
+  const session = await manager.spawn({});
+  const result = await session.execCommand('echo interactive', {
+    waitForCompletion: false,
+    idleMs: 300,
+    timeoutMs: 5000,
+  });
+  assert.equal(result.completed, false);
+  assert.equal(result.exitCode, null);
+  assert.match(result.output, /interactive/);
+});
+
+test('execCommand leaves no completion markers in the session buffer', async (t) => {
+  const manager = useManager(t);
+  const session = await manager.spawn({});
+  await session.execCommand(nodeEval("console.log('clean-output')"));
+  const all = session.read({ lines: 1000 }).output;
+  assert.match(all, /clean-output/);
+  assert.doesNotMatch(all, /__LTM_DONE_/);
+});
+
 test('runOnce returns stdout, stderr and exit code', async () => {
   const result = await runOnce({
     command: nodeEval(

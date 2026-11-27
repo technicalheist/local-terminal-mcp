@@ -29,6 +29,18 @@ npx -y github:technicalheist/local-terminal-mcp
 
 The server speaks MCP over stdio, so it is normally launched by an MCP client rather than by hand.
 
+## Demo
+
+Run the built-in demo from a checkout:
+
+```bash
+npm run demo
+# or point it at a project directory
+npm run demo -- /path/to/project
+```
+
+It opens two terminal sessions, runs stateful shell commands, checks exit codes, pipes, unicode and a slow command, and runs read-only GitLab CLI checks when `glab` is installed. It prints a pass/fail table and exits non-zero on failure.
+
 ## Client configuration
 
 ### Claude Desktop
@@ -95,7 +107,7 @@ args = ["-y", "github:technicalheist/local-terminal-mcp"]
 | `terminal_list` | List sessions with status, pid and buffer usage. |
 | `terminal_read` | Read output. Pass `since` (the previous `nextSince`) to get only new output. |
 | `terminal_write` | Write raw input to a session. Set `wait: true` to include the resulting output. |
-| `terminal_exec` | Run a command in an existing session and return its output. |
+| `terminal_exec` | Run a command in an existing session, wait for it to finish and return output plus exit code. Set `waitForCompletion: false` for REPLs or servers. |
 | `terminal_run` | Run a one-off command in a fresh shell and return stdout, stderr and exit code. |
 | `terminal_signal` | Send `SIGINT`, `SIGTERM`, `SIGHUP` or `SIGKILL` to a session's process group. |
 | `terminal_close` | Stop and remove a session. |
@@ -130,11 +142,13 @@ local-terminal-mcp [options]
 
 The server launches each session as a child shell with piped stdio (no pseudo-terminal). Commands are written to stdin and stdout/stderr are captured into a per-session ring buffer. Every output chunk gets a sequence number so clients can poll incrementally with `since` / `nextSince`.
 
+`terminal_exec` appends a small hidden marker after each command to capture the exit code and detect completion. It removes the marker from the output and from the session buffer. If `completed` is `false`, the command is still running or waiting for input; poll with `terminal_read`.
+
 Because there is no PTY:
 
 - Full-screen interactive programs such as `vim`, `top` or `htop` will not render correctly.
-- Line-oriented interactive programs (Python/Node REPLs, prompts) work through `terminal_write` with `newline: false`.
-- `terminal_exec` returns when output goes quiet. A long-running command may still be running; poll `terminal_read` with the returned cursor.
+- Line-oriented interactive programs (Python/Node REPLs, prompts) work through `terminal_write` with `newline: false`, or through `terminal_exec` with `waitForCompletion: false`.
+- A command that reads stdin consumes the completion marker; use `terminal_write` for those commands.
 
 ## Security
 

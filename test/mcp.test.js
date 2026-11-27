@@ -55,6 +55,8 @@ test('MCP server exposes the terminal tools and runs commands end to end', async
       }),
     );
     assert.match(executed.output, /mcp-ok/);
+    assert.equal(executed.completed, true);
+    assert.equal(executed.exitCode, 0);
 
     const listed = parse(await client.callTool({ name: 'terminal_list', arguments: {} }));
     assert.equal(listed.count, 1);

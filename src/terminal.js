@@ -67,12 +67,22 @@ function shellArgs(shell) {
   return [];
 }
 
+function shellFamily(shell) {
+  if (!isWindows) return 'posix';
+  const name = path.basename(shell).toLowerCase();
+  if (name.startsWith('powershell') || name === 'pwsh.exe' || name === 'pwsh') {
+    return 'powershell';
+  }
+  return 'cmd';
+}
+
 class TerminalSession {
   constructor(manager, options) {
     this.manager = manager;
     this.id = `term_${randomUUID().replace(/-/g, '').slice(0, 8)}`;
     this.name = options.name || this.id;
     this.shell = options.shell;
+    this.shellFamily = shellFamily(this.shell);
     this.cwd = options.cwd;
     this.createdAt = Date.now();
     this.status = 'starting';
@@ -239,6 +249,100 @@ class TerminalSession {
       await sleep(40);
     }
     return { settled: false, reason: 'timeout', waitedMs: Date.now() - start };
+  }
+
+  markerLine(marker) {
+    if (this.shellFamily === 'powershell') {
+      return (
+        `$__ltmOk = $?; ` +
+        `$__ltmCode = if ($__ltmOk) { 0 } elseif ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 1 }; ` +
+        `Write-Output ''; Write-Output "${marker}$__ltmCode"`
+      );
+    }
+    if (this.shellFamily === 'cmd') {
+      return `set ${marker}=%errorlevel%\necho.\necho ${marker}%${marker}%`;
+    }
+    return `printf '\\n${marker}%s\\n' "$?"`;
+  }
+
+  stripMarkerFromBuffer(stripPattern) {
+    for (const chunk of this.chunks) {
+      if (!stripPattern.test(chunk.text)) continue;
+      const before = chunk.text.length;
+      chunk.text = chunk.text.replace(stripPattern, '');
+      this.bufferedChars -= before - chunk.text.length;
+      if (this.bufferedChars < 0) this.bufferedChars = 0;
+      break;
+    }
+  }
+
+  async execCommand(command, options = {}) {
+    const idleMs = options.idleMs ?? 400;
+    const timeoutMs = options.timeoutMs ?? 15000;
+    const waitForCompletion = options.waitForCompletion !== false;
+    const noOutputGraceMs = options.noOutputGraceMs ?? 5000;
+
+    const cursor = this.nextSeq;
+    const token = randomUUID().replace(/-/g, '').slice(0, 10);
+    const marker = `__LTM_DONE_${token}__`;
+    const markerPattern = new RegExp(`${marker}(\\d+)`);
+    const stripPattern = new RegExp(`\\r?\\n?${marker}\\d+\\r?\\n?`);
+
+    let payload = String(command);
+    if (!payload.endsWith('\n')) payload += '\n';
+    if (waitForCompletion) payload += `${this.markerLine(marker)}\n`;
+
+    await this.write(payload, { newline: false });
+
+    const started = Date.now();
+    const deadline = started + timeoutMs;
+    let completed = false;
+    let exitCode = null;
+    let scannedSeq = cursor;
+    let pending = '';
+
+    if (waitForCompletion) {
+      while (Date.now() < deadline) {
+        for (const chunk of this.chunks) {
+          if (chunk.seq < scannedSeq) continue;
+          scannedSeq = chunk.seq + 1;
+          pending += chunk.text;
+        }
+
+        const match = pending.match(markerPattern);
+        if (match) {
+          exitCode = Number(match[1]);
+          completed = true;
+          break;
+        }
+        if (pending.length > 8192) pending = pending.slice(-256);
+
+        if (this.status !== 'running') break;
+
+        const quietFor = Date.now() - this.lastOutputAt;
+        const sawOutput = this.nextSeq > cursor;
+        if (sawOutput && quietFor >= Math.max(idleMs, 1500)) break;
+        if (!sawOutput && Date.now() - started >= noOutputGraceMs) break;
+
+        await sleep(40);
+      }
+    } else {
+      await this.waitForIdle({ idleMs, timeoutMs, since: cursor });
+    }
+
+    const read = this.read({ since: cursor, raw: options.raw });
+    if (completed) this.stripMarkerFromBuffer(stripPattern);
+    const output = waitForCompletion ? read.output.replace(stripPattern, '') : read.output;
+
+    return {
+      output,
+      nextSince: read.nextSince,
+      completed,
+      exitCode,
+      sessionStatus: this.status,
+      sessionExitCode: this.exitCode,
+      waitedMs: Date.now() - started,
+    };
   }
 
   snapshot() {
