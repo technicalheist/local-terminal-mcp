@@ -270,7 +270,7 @@ class TerminalSession {
       );
     }
     if (this.shellFamily === 'cmd') {
-      return `set ${marker}=%errorlevel%\necho.\necho ${marker}%${marker}%`;
+      return `set ${marker}=%errorlevel%\necho ${marker}%${marker}%`;
     }
     return `printf '\\n${marker}%s\\n' "$?"`;
   }
