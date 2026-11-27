@@ -16,7 +16,7 @@ function parse(result) {
 async function connect() {
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [bin, '--quiet'],
+    args: [bin, '--quiet', '--no-daemon'],
     env: { ...process.env },
     stderr: 'pipe',
   });

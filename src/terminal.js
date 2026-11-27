@@ -288,9 +288,9 @@ class TerminalSession {
 
   async execCommand(command, options = {}) {
     const idleMs = options.idleMs ?? 400;
-    const timeoutMs = options.timeoutMs ?? 15000;
+    const timeoutMs = options.timeoutMs ?? 120000;
     const waitForCompletion = options.waitForCompletion !== false;
-    const noOutputGraceMs = options.noOutputGraceMs ?? 5000;
+    const noOutputGraceMs = options.noOutputGraceMs ?? 30000;
 
     const cursor = this.nextSeq;
     const token = randomUUID().replace(/-/g, '').slice(0, 10);

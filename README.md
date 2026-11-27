@@ -7,6 +7,7 @@ Each session is a real shell process. Working directory and environment variable
 ## Features
 
 - Multiple concurrent shell sessions, each with its own process, buffer and lifecycle
+- Sessions survive MCP server restarts through a per-user background daemon
 - Persistent state: `cd`, `export`, virtualenv activation and similar commands stick
 - Incremental output reading with a sequence cursor, so nothing is read twice
 - Agent-friendly helpers: run a one-off command, wait for output to settle, send signals, close sessions
@@ -27,7 +28,7 @@ Run directly from GitHub with `npx` (no install step):
 npx -y github:technicalheist/local-terminal-mcp
 ```
 
-The server speaks MCP over stdio, so it is normally launched by an MCP client rather than by hand.
+The server speaks MCP over stdio, so it is normally launched by an MCP client rather than by hand. By default it connects to a per-user background daemon that owns the terminal sessions, so restarting the MCP server or reconnecting the client keeps them alive. Pass `--no-daemon` to run everything in one process.
 
 ## Demo
 
@@ -133,6 +134,7 @@ local-terminal-mcp [options]
 --max-sessions <n>     Maximum concurrent sessions (default: 32)
 --buffer-size <n>      Output buffer per session in characters (default: 1048576)
 --read-only            Block spawn, write, exec, run, signal and close
+--no-daemon            Run the MCP server in this process instead of the shared daemon
 --quiet                Do not print the startup line to stderr
 -h, --help             Show help
 -v, --version          Print the version
@@ -142,7 +144,9 @@ local-terminal-mcp [options]
 
 The server launches each session as a child shell with piped stdio (no pseudo-terminal). Commands are written to stdin and stdout/stderr are captured into a per-session ring buffer. Every output chunk gets a sequence number so clients can poll incrementally with `since` / `nextSince`.
 
-`terminal_exec` appends a small hidden marker after each command to capture the exit code and detect completion. It removes the marker from the output and from the session buffer. If `completed` is `false`, the command is still running or waiting for input; poll with `terminal_read`.
+By default the stdio process is a thin proxy to a per-user background daemon. The daemon owns the shells and output buffers, so restarting the MCP server or reconnecting the client keeps sessions alive. `terminal_list` shows them again. The socket lives under `~/.local-terminal-mcp/` with user-only permissions. Use `--no-daemon` to keep all state inside the stdio process instead.
+
+`terminal_exec` appends a small hidden marker after each command to capture the exit code and detect completion. It waits up to two minutes by default and gives silent commands up to 30 seconds to start producing output. It removes the marker from the output and from the session buffer. If `completed` is `false`, the command is still running or waiting for input; poll with `terminal_read`.
 
 Because there is no PTY:
 
@@ -152,7 +156,7 @@ Because there is no PTY:
 
 ## Security
 
-This server grants full shell access to the user account that runs it. Only connect it to MCP clients and models you trust. Use `--read-only` to block new sessions and command execution, and run it inside a container or VM when experimenting with untrusted agents.
+This server grants full shell access to the user account that runs it. Only connect it to MCP clients and models you trust. The daemon socket is readable/writable only by your user, but any process running as you can connect to it. Use `--read-only` to block new sessions and command execution, and run it inside a container or VM when experimenting with untrusted agents.
 
 ## Install from GitHub Packages
 

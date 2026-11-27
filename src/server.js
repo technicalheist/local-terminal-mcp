@@ -1,11 +1,7 @@
-import fs from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { TerminalManager, runOnce } from './terminal.js';
-
-const VERSION = JSON.parse(
-  fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-).version;
+import { VERSION } from './version.js';
 
 const INSTRUCTIONS = `Local Terminal MCP gives you persistent shell sessions on the machine that runs this server.
 
@@ -21,6 +17,7 @@ Notes:
 - Sessions are real local shells. They can read, write and delete files and run any program the server user can run.
 - Do not run two commands in the same session at the same time. Output interleaves; use separate sessions instead.
 - terminal_exec waits for the command to finish and returns "completed" plus the command exit code. If completed is false, it is still running or waiting for input; poll with terminal_read using the returned nextSince value.
+- Sessions normally live in a per-user background daemon. If this MCP server is restarted, terminal_list and terminal_read still find the sessions (unless the server was started with --no-daemon).
 - For interactive programs or commands that read stdin, use terminal_write, or terminal_exec with waitForCompletion: false.
 - Prefer terminal_run for short one-off commands and terminal_spawn + terminal_exec for anything stateful.
 - Close sessions you no longer need.`;
@@ -68,7 +65,7 @@ const timeoutMs = z
   .min(100)
   .max(600000)
   .optional()
-  .describe('Maximum time to wait in milliseconds. Default 15000 for sessions, 30000 for run.');
+  .describe('Maximum time to wait in milliseconds. Default 120000 for terminal_exec, 15000 for terminal_write, 30000 for terminal_run.');
 
 export function createTerminalServer(options = {}) {
   const manager =
@@ -263,7 +260,7 @@ export function createTerminalServer(options = {}) {
     {
       title: 'Run a command in a session',
       description:
-        'Type a command into an existing session, wait for it to finish and return its output and exit code. The session keeps its working directory and environment, so use this for multi-step work. Set waitForCompletion to false for interactive programs or long-running servers.',
+        'Type a command into an existing session, wait for it to finish and return its output and exit code. The session keeps its working directory and environment, so use this for multi-step work. Waits up to 2 minutes by default. Set waitForCompletion to false for interactive programs or long-running servers.',
       inputSchema: {
         id: sessionRef,
         command: z.string().min(1).describe('Command line to execute in the session shell.'),
@@ -289,7 +286,7 @@ export function createTerminalServer(options = {}) {
       const session = manager.resolve(id);
       const result = await session.execCommand(command, {
         idleMs: quiet ?? 400,
-        timeoutMs: limit ?? 15000,
+        timeoutMs: limit ?? 120000,
         raw,
         waitForCompletion,
       });
