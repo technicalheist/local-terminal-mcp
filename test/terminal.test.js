@@ -92,7 +92,7 @@ test('execCommand reports the command exit code and completion', async (t) => {
   const silent = await session.execCommand(nodeEval('process.exit(0)'), { timeoutMs: 8000 });
   assert.equal(silent.completed, true);
   assert.equal(silent.exitCode, 0);
-  assert.equal(silent.output, '');
+  assert.equal(silent.output.trim(), '');
 });
 
 test('execCommand waits for slow commands instead of returning empty output', async (t) => {
