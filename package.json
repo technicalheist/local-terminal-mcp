@@ -1,0 +1,54 @@
+{
+  "name": "@technicalheist/local-terminal-mcp",
+  "version": "1.0.0",
+  "description": "MCP server that gives AI agents multiple persistent local terminal sessions.",
+  "type": "module",
+  "bin": {
+    "local-terminal-mcp": "./bin/local-terminal-mcp.js"
+  },
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "terminal",
+    "shell",
+    "bash",
+    "zsh",
+    "ai",
+    "agent"
+  ],
+  "license": "MIT",
+  "author": "technicalheist",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/technicalheist/local-terminal-mcp.git"
+  },
+  "homepage": "https://github.com/technicalheist/local-terminal-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/technicalheist/local-terminal-mcp/issues"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node bin/local-terminal-mcp.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  }
+}
