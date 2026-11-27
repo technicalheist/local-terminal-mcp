@@ -100,6 +100,9 @@ class TerminalSession {
     this.lastCommandAt = null;
 
     const env = { ...process.env, ...(manager.env || {}), ...(options.env || {}) };
+    if (this.shellFamily === 'cmd') {
+      env.PROMPT = '';
+    }
     const child = spawn(this.shell, shellArgs(this.shell), {
       cwd: this.cwd,
       env,
