@@ -64,6 +64,9 @@ function shellArgs(shell) {
   if (name.startsWith('powershell') || name === 'pwsh.exe' || name === 'pwsh') {
     return ['-NoLogo', '-NoProfile', '-Command', '-'];
   }
+  if (name === 'cmd.exe' || name === 'cmd') {
+    return ['/d', '/q'];
+  }
   return [];
 }
 
