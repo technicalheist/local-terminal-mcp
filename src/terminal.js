@@ -371,11 +371,7 @@ export class TerminalManager {
   async close(id) {
     const session = this.resolve(id);
     if (session.status === 'running' || session.status === 'starting') {
-      if (!isWindows) {
-        this.killProcess(session, 'SIGTERM');
-      } else {
-        this.killProcess(session, 'SIGTERM');
-      }
+      this.killProcess(session, 'SIGTERM');
 
       const exited = await Promise.race([
         new Promise((resolve) => {
@@ -404,6 +400,39 @@ export class TerminalManager {
   }
 }
 
+function killTree(child) {
+  if (!child.pid) return;
+  if (isWindows) {
+    const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    killer.on('error', () => {});
+    return;
+  }
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+function spawnOneShot(shell, command, options) {
+  if (isWindows) {
+    const name = path.basename(shell).toLowerCase();
+    if (name.startsWith('powershell') || name.startsWith('pwsh')) {
+      const encoded = Buffer.from(command, 'utf16le').toString('base64');
+      return spawn(shell, ['-NoLogo', '-NoProfile', '-EncodedCommand', encoded], options);
+    }
+    return spawn(command, { ...options, shell });
+  }
+  return spawn(command, { ...options, shell });
+}
+
 export function runOnce(options = {}) {
   const shell = options.shell || defaultShell();
   const command = options.command;
@@ -414,15 +443,9 @@ export function runOnce(options = {}) {
   const maxOutputChars = options.maxOutputChars ?? 200000;
   const env = { ...process.env, ...(options.env || {}) };
 
-  const args = isWindows
-    ? shellArgs(shell).length
-      ? [...shellArgs(shell), command]
-      : ['/d', '/s', '/c', command]
-    : ['-c', command];
-
   return new Promise((resolve) => {
     const started = Date.now();
-    const child = spawn(shell, args, {
+    const child = spawnOneShot(shell, command, {
       cwd,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -485,12 +508,8 @@ export function runOnce(options = {}) {
 
     const timer = setTimeout(() => {
       timedOut = true;
-      try {
-        if (!isWindows && child.pid) process.kill(-child.pid, 'SIGKILL');
-        else child.kill('SIGKILL');
-      } catch {
-        child.kill('SIGKILL');
-      }
+      killTree(child);
+      setTimeout(() => finish(null, 'SIGKILL', null), 2000).unref();
     }, Math.max(1000, timeoutMs));
 
     child.on('error', (err) => finish(null, null, err.message));
