@@ -1,8 +1,11 @@
+import fs from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { TerminalManager, runOnce } from './terminal.js';
 
-const VERSION = '1.0.0';
+const VERSION = JSON.parse(
+  fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
 
 const INSTRUCTIONS = `Local Terminal MCP gives you persistent shell sessions on the machine that runs this server.
 
